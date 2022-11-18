@@ -2,7 +2,7 @@ import socket
 import json
 
 c = socket.socket()
-c.connect(('localhost',3000))
+c.connect(('localhost',9999))
 
 name = 'Drone-2'
 c.send(bytes(name,'utf-8'))
