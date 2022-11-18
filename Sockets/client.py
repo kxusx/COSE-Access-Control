@@ -1,4 +1,5 @@
 import socket
+import json
 
 c = socket.socket()
 c.connect(('localhost',3000))
@@ -8,4 +9,7 @@ c.send(bytes(name,'utf-8'))
 print(c.recv(1024).decode())
 
 Profile = {'name':'Drone1', 'id':1234}
-c.send(bytes('Hey, Drone-1','utf-8'))
+# convert profile into json format
+profile_json = json.dumps(Profile)
+# send profile to server
+c.send(bytes(profile_json,'utf-8'))
