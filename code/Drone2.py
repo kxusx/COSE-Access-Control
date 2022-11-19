@@ -11,8 +11,21 @@ from pycose.keys.keyparam import EC2KpD
 from pycose.keys import EC2Key
 import sys
 import json
+import random
+import time
 
 mymsg="hello from Drone-1"
+
+# public parameters
+p=53
+g=39
+
+#secret number
+b=random.randint(1,p)
+print('b: ',b)
+
+B = (g**b)%p
+print('B: ',B)
 
 if (len(sys.argv)>1):
 	mymsg=str(sys.argv[1])
@@ -28,12 +41,23 @@ c = socket.socket()
 c.connect(('localhost',9999))
 
 name = 'Drone-2'
-c.send(bytes(name,'utf-8'))
+profile = {'name':name, 'B':B}
+profile_ser = json.dumps(profile)
+c.send(bytes(profile_ser,'utf-8'))
 
 dr1_key_material = c.recv(1024).decode()
 dr1_key_material = json.loads(dr1_key_material)
 drone1 = dr1_key_material['drone1']
 drone1pub = dr1_key_material['drone1pub']
+A = int(dr1_key_material['A'])
+
+print('Connected to Drone1!!!')
+print('Establishing the session key......')
+time.sleep(2)
+
+print('A: ',A)
+session_key = (A**b)%p
+print('Session key: ',session_key)
 
 unhex = unhexlify(bytes(drone1,'utf-8'))
 unhex_pub = unhexlify(bytes(drone1pub,'utf-8'))
@@ -73,7 +97,7 @@ msg = EncMessage(
 encoded = msg.encode()
 
 encoded_hex = hexlify(encoded).decode()
-c.send(bytes(encoded_hex,'utf-8'))
+c.send(bytes(encoded_hex,'utf-8'))  
 print('Message Sent to Drone-1')
 
 while True:
