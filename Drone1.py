@@ -84,6 +84,14 @@ unhex_pub = unhexlify(bytes(drone2pub,'utf-8'))
 drone2 = CoseKey.decode(unhex)
 drone2pub = CoseKey.decode(unhex_pub)
 
+## Used for authentication using EphemeralKey consist of drone1 and drone2 public key
+shared = DirectKeyAgreement(
+    phdr = {Algorithm: EcdhEsHKDF256},
+    uhdr = {EphemeralKey: drone2pub and drone1pub})
+
+shared.key = drone2
+shared.local_attrs = {StaticKey: drone1pub}
+
 while True:
     encoded_hex = c.recv(1024).decode()
     if encoded_hex:
@@ -93,8 +101,24 @@ while True:
         static_receiver_key = CoseKey.from_dict(drone1)
         decoded.recipients[0].key = drone1
         msg = decoded.decrypt(decoded.recipients[0]).decode()
+        
+        if msg == 'session over':
+            print('Session Timed out!!!')
+            break
         print ("\nMessage: ",msg)
 
         response = input(f'Enter response message to {profile["name"]}: ')
-        c.send(bytes(response,'utf-8'))
+        IVal = urandom(16)
+
+        msg = EncMessage(
+        phdr = {Algorithm: A128GCM},
+        uhdr = {IV: IVal},
+        payload = response.encode(),
+        recipients = [shared])
+
+        encoded = msg.encode()
+
+        encoded_hex = hexlify(encoded).decode()
+        c.send(bytes(encoded_hex,'utf-8'))  
+
 c.close()

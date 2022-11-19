@@ -100,8 +100,10 @@ shared.local_attrs = {StaticKey: drone2pub}
 
 start = time.time()
 curr = time.time()
+
 while (curr-start) < 50:
     mymsg = input('Enter Message: ')
+    curr = time.time()
     if (curr-start) > 50:
         break    
 
@@ -121,11 +123,32 @@ while (curr-start) < 50:
 
     while True:
         print('Waiting for response........')
-        print("Response message from Drone-1: ",c.recv(1024).decode())
-        print('\n')
-        break
+        encoded_hex = c.recv(1024).decode()
+        if encoded_hex:
+            encoded = unhexlify(bytes(encoded_hex,'utf-8'))
+            decoded = CoseMessage.decode(encoded)
+
+            static_receiver_key = CoseKey.from_dict(drone2)
+            decoded.recipients[0].key = drone2
+            msg = decoded.decrypt(decoded.recipients[0]).decode()
+            print ("\nResponse Message from Drone1: ",msg)
+            print('\n')
+            break
     
     curr = time.time()
     
 if (curr-start) > 50:
+    session_message = 'session over'
+    IVal = urandom(16)
+
+    msg = EncMessage(
+        phdr = {Algorithm: A128GCM},
+        uhdr = {IV: IVal},
+        payload = session_message.encode(),
+        recipients = [shared])
+
+    encoded = msg.encode()
+
+    encoded_hex = hexlify(encoded).decode()
+    c.send(bytes(encoded_hex,'utf-8'))
     print('\nSession timed out!!!')
