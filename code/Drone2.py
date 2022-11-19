@@ -14,35 +14,47 @@ import json
 import random
 import time
 
-mymsg="hello from Drone-1"
 
-# public parameters
-p=53
-g=39
+json_object = None
+with open('reg.json', 'r') as openfile:
+    json_object = json.load(openfile)
+
+## Public parameters
+p=json_object['p']
+g=json_object['g']
 
 #secret number
 b=random.randint(1,p)
-print('b: ',b)
 
+# Sharing material to drone1 to establish session key
 B = (g**b)%p
-print('B: ',B)
 
 if (len(sys.argv)>1):
 	mymsg=str(sys.argv[1])
 
+## Drone2 private key
 drone2_private_key = urandom(32)
+
+## Drone2 content encrytption key
 drone2= EC2Key(crv='P_256', d=drone2_private_key, optional_params={'KpAlg': 'EcdhEsHKDF256','KpKty': 'KtyEC2'})
 
 drone2 = CoseKey.from_dict(drone2)
+
+## Drone2 public key
 drone2pub = deepcopy(drone2)
+
+##Deleting private key instance from private key
 del drone2pub[EC2KpD]
 
+## Connection setup
 c = socket.socket()
 c.connect(('localhost',9999))
 
 name = 'Drone-2'
 profile = {'name':name, 'B':B}
 profile_ser = json.dumps(profile)
+
+## Sending Drone2 profile to Drone1
 c.send(bytes(profile_ser,'utf-8'))
 
 dr1_key_material = c.recv(1024).decode()
@@ -52,8 +64,10 @@ drone1pub = dr1_key_material['drone1pub']
 A = int(dr1_key_material['A'])
 
 print('Connected to Drone1!!!')
+
+## Establishing the session key
 print('Establishing the session key......')
-time.sleep(2)
+time.sleep(1)
 
 print('A: ',A)
 session_key = (A**b)%p
@@ -76,7 +90,7 @@ data_string = json.dumps(key_material) #data serialized
 
 c.send(bytes(data_string,'utf-8'))
 
-
+## Used for authentication using EphemeralKey consist of drone1 and drone2 public key
 shared = DirectKeyAgreement(
     phdr = {Algorithm: EcdhEsHKDF256},
     uhdr = {EphemeralKey: drone1pub and drone2pub})
@@ -84,23 +98,34 @@ shared = DirectKeyAgreement(
 shared.key = drone1
 shared.local_attrs = {StaticKey: drone2pub}
 
-mymsg = input('Enter Message: ')    
+start = time.time()
+curr = time.time()
+while (curr-start) < 50:
+    mymsg = input('Enter Message: ')
+    if (curr-start) > 50:
+        break    
 
-IVal = urandom(16)
+    IVal = urandom(16)
 
-msg = EncMessage(
-    phdr = {Algorithm: A128GCM},
-    uhdr = {IV: IVal},
-    payload = mymsg.encode(),
-    recipients = [shared])
+    msg = EncMessage(
+        phdr = {Algorithm: A128GCM},
+        uhdr = {IV: IVal},
+        payload = mymsg.encode(),
+        recipients = [shared])
 
-encoded = msg.encode()
+    encoded = msg.encode()
 
-encoded_hex = hexlify(encoded).decode()
-c.send(bytes(encoded_hex,'utf-8'))  
-print('Message Sent to Drone-1')
+    encoded_hex = hexlify(encoded).decode()
+    c.send(bytes(encoded_hex,'utf-8'))  
+    print('Message Sent to Drone-1')
 
-while True:
-    print('Waiting for response........')
-    print("Response message from Drone-1: ",c.recv(1024).decode())
-    break
+    while True:
+        print('Waiting for response........')
+        print("Response message from Drone-1: ",c.recv(1024).decode())
+        print('\n')
+        break
+    
+    curr = time.time()
+    
+if (curr-start) > 50:
+    print('\nSession timed out!!!')
