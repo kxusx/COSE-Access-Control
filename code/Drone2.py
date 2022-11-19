@@ -1,5 +1,5 @@
 import socket
-from binascii import hexlify
+from binascii import hexlify, unhexlify
 from copy import deepcopy
 from os import urandom
 from pycose.messages import EncMessage,CoseMessage
@@ -12,6 +12,11 @@ from pycose.keys import EC2Key
 import sys
 import json
 
+mymsg="hello from Drone-1"
+
+if (len(sys.argv)>1):
+	mymsg=str(sys.argv[1])
+
 drone2_private_key = urandom(32)
 drone2= EC2Key(crv='P_256', d=drone2_private_key, optional_params={'KpAlg': 'EcdhEsHKDF256','KpKty': 'KtyEC2'})
 
@@ -19,28 +24,59 @@ drone2 = CoseKey.from_dict(drone2)
 drone2pub = deepcopy(drone2)
 del drone2pub[EC2KpD]
 
-
 c = socket.socket()
-c.connect(('localhost',3000))
+c.connect(('localhost',9999))
 
-dr = ''
+name = 'Drone-2'
+c.send(bytes(name,'utf-8'))
+
+dr1_key_material = c.recv(1024).decode()
+dr1_key_material = json.loads(dr1_key_material)
+drone1 = dr1_key_material['drone1']
+drone1pub = dr1_key_material['drone1pub']
+
+unhex = unhexlify(bytes(drone1,'utf-8'))
+unhex_pub = unhexlify(bytes(drone1pub,'utf-8'))
+
+drone1 = CoseKey.decode(unhex)
+drone1pub = CoseKey.decode(unhex_pub)
+
+serialized_key = drone2.encode()
+sr_key = hexlify(serialized_key).decode()
+
+serialized_key_pub = drone2pub.encode()
+sr_keypub = hexlify(serialized_key_pub).decode()
+
+key_material = {'drone2':sr_key, 'drone2pub':sr_keypub}
+data_string = json.dumps(key_material) #data serialized
+
+c.send(bytes(data_string,'utf-8'))
+
+
+shared = DirectKeyAgreement(
+    phdr = {Algorithm: EcdhEsHKDF256},
+    uhdr = {EphemeralKey: drone1pub and drone2pub})
+
+shared.key = drone1
+shared.local_attrs = {StaticKey: drone2pub}
+
+mymsg = input('Enter Message: ')    
+
+IVal = urandom(16)
+
+msg = EncMessage(
+    phdr = {Algorithm: A128GCM},
+    uhdr = {IV: IVal},
+    payload = mymsg.encode(),
+    recipients = [shared])
+
+encoded = msg.encode()
+
+encoded_hex = hexlify(encoded).decode()
+c.send(bytes(encoded_hex,'utf-8'))
+print('Message Sent to Drone-1')
+
 while True:
-    dr=c.recv(1024).decode()
-    dr = json.loads(dr)
-    print(dr)
+    print('Waiting for response........')
+    print("Response message from Drone-1: ",c.recv(1024).decode())
     break
-
-# print(dr)
-
-# shared = DirectKeyAgreement(
-#     phdr = {Algorithm: EcdhEsHKDF256},
-#     uhdr = {EphemeralKey: alicepub and drone2pub})
-
-# shared.key = drone1
-# shared.local_attrs = {StaticKey: drone2pub}
-
-# name = 'Drone-2'
-# c.send(bytes(name,'utf-8'))
-# print(c.recv(1024).decode())
-
-# c.send(bytes('Hey, Drone-1','utf-8'))
