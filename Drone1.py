@@ -13,18 +13,22 @@ import sys
 import json
 import random
 import time
+import hashlib
+
+PORT = 9998
+
+Key_start_time = time.time()
 
 json_object = None
 with open('reg.json', 'r') as openfile:
     json_object = json.load(openfile)
-
+    
 ## Public parameters
 p=json_object['p']
 g=json_object['g']
 
 # Secret number
 a=random.randint(1,p)
-print('a: ',a)
 
 # Sharing material to drone2 to establish session key
 A = (g**a)%p
@@ -46,15 +50,13 @@ sr_key = hexlify(serialized_key).decode()
 serialized_key_pub = drone1pub.encode()
 sr_keypub = hexlify(serialized_key_pub).decode()
 
-key_material = {'drone1':sr_key, 'drone1pub':sr_keypub, 'A':A}
-data_string = json.dumps(key_material) #data serialized
 
 
 ### Socket connection establishment
 s = socket.socket()
 print('Socket created') 
 
-s.bind(('localhost',9999))
+s.bind(('localhost',PORT))
 s.listen(1)
 print('Waiting for connections')
 
@@ -63,16 +65,38 @@ c, addr = s.accept()
 profile_ser = c.recv(1024).decode()
 profile = json.loads(profile_ser)
 
-print('Connected with ',addr,profile['name'])
-print('Establishing the session key......')
-time.sleep(2) 
+print('\nConnected with ',addr,profile['name'])
+print('\nEstablishing the session key......')
+time.sleep(1) 
 
 B = int(profile['B'])
 
 Session_key = (B**a)%p
-print('Session key: ',Session_key)
+
+Hashed_session_key = hashlib.sha256(str(Session_key).encode('utf-8')).hexdigest()
+print('Session key Hash: ',Hashed_session_key)
+
+json_object['Session_key Hash'] = Hashed_session_key
+
+json_update = json.dumps(json_object, indent=4)
+
+with open("reg.json", "w") as outfile:
+    outfile.write(json_update)
+    
+    
+key_material = {'drone1':sr_key, 'drone1pub':sr_keypub, 'A':A}
+data_string = json.dumps(key_material) #data serialized
     
 c.send(bytes(data_string,'utf-8'))
+
+session_msg = c.recv(1024).decode()
+
+if session_msg == 'failed!!':
+    print('Failed to establish session key!!!')
+    exit()
+else:
+    print(session_msg)
+
 dr2_key_material = c.recv(1024).decode()
 dr2_key_material = json.loads(dr2_key_material)
 drone2 = dr2_key_material['drone2']
@@ -92,21 +116,28 @@ shared = DirectKeyAgreement(
 shared.key = drone2
 shared.local_attrs = {StaticKey: drone1pub}
 
+Key_end_time = time.time()
+print('Computation time in key establishment phase: ',Key_end_time-Key_start_time)
+
 while True:
     encoded_hex = c.recv(1024).decode()
     if encoded_hex:
+        print('Size of message received: ',len(encoded_hex),' bytes')
+        start = time.time()
         encoded = unhexlify(bytes(encoded_hex,'utf-8'))
         decoded = CoseMessage.decode(encoded)
 
         static_receiver_key = CoseKey.from_dict(drone1)
         decoded.recipients[0].key = drone1
         msg = decoded.decrypt(decoded.recipients[0]).decode()
+        print('Size of payload received: ',len(msg),' bytes')
         
         if msg == 'session over':
             print('Session Timed out!!!')
             break
         print ("\nMessage: ",msg)
-
+        endTime = time.time()
+        print('Computation time for each message: ',endTime-start)
         response = input(f'Enter response message to {profile["name"]}: ')
         IVal = urandom(16)
 

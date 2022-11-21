@@ -13,12 +13,16 @@ import sys
 import json
 import random
 import time
+import hashlib
 
+Key_start_time = time.time()
+
+PORT = 9998
 
 json_object = None
 with open('reg.json', 'r') as openfile:
     json_object = json.load(openfile)
-
+    
 ## Public parameters
 p=json_object['p']
 g=json_object['g']
@@ -48,7 +52,7 @@ del drone2pub[EC2KpD]
 
 ## Connection setup
 c = socket.socket()
-c.connect(('localhost',9999))
+c.connect(('localhost',PORT))
 
 name = 'Drone-2'
 profile = {'name':name, 'B':B}
@@ -71,7 +75,20 @@ time.sleep(1)
 
 print('A: ',A)
 session_key = (A**b)%p
+
+hashed_key = hashlib.sha256(str(session_key).encode('utf-8')).hexdigest()
+
+json_object = None
+with open('reg.json', 'r') as openfile:
+    json_object = json.load(openfile)
+    
+if hashed_key != json_object['Session_key Hash']:
+    print('Failed to establish session key!!!')
+    c.send(bytes('failed!!','utf-8'))
+    exit()
 print('Session key: ',session_key)
+
+c.send(bytes('Session Established!!!!','utf-8'))
 
 unhex = unhexlify(bytes(drone1,'utf-8'))
 unhex_pub = unhexlify(bytes(drone1pub,'utf-8'))
@@ -97,6 +114,10 @@ shared = DirectKeyAgreement(
 
 shared.key = drone1
 shared.local_attrs = {StaticKey: drone2pub}
+
+Key_end_time = time.time()
+print('Computation time in key establishment phase: ',Key_end_time-Key_start_time)
+
 
 start = time.time()
 curr = time.time()
@@ -125,12 +146,14 @@ while (curr-start) < 50:
         print('Waiting for response........')
         encoded_hex = c.recv(1024).decode()
         if encoded_hex:
+            print('Size of message received: ',len(encoded_hex),' bytes')
             encoded = unhexlify(bytes(encoded_hex,'utf-8'))
             decoded = CoseMessage.decode(encoded)
 
             static_receiver_key = CoseKey.from_dict(drone2)
             decoded.recipients[0].key = drone2
             msg = decoded.decrypt(decoded.recipients[0]).decode()
+            print('Size of payload received: ',len(msg),' bytes')
             print ("\nResponse Message from Drone1: ",msg)
             print('\n')
             break
