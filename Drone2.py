@@ -73,10 +73,10 @@ print('Connected to Drone1!!!')
 print('Establishing the session key......')
 time.sleep(1)
 
-print('A: ',A)
 session_key = (A**b)%p
 
 hashed_key = hashlib.sha256(str(session_key).encode('utf-8')).hexdigest()
+print('Session Key: ',hashed_key)
 
 json_object = None
 with open('reg.json', 'r') as openfile:
@@ -86,7 +86,6 @@ if hashed_key != json_object['Session_key Hash']:
     print('Failed to establish session key!!!')
     c.send(bytes('failed!!','utf-8'))
     exit()
-print('Session key: ',session_key)
 
 c.send(bytes('Session Established!!!!','utf-8'))
 

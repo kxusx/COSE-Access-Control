@@ -74,7 +74,7 @@ B = int(profile['B'])
 Session_key = (B**a)%p
 
 Hashed_session_key = hashlib.sha256(str(Session_key).encode('utf-8')).hexdigest()
-print('Session key Hash: ',Hashed_session_key)
+print('Session key: ',Hashed_session_key)
 
 json_object['Session_key Hash'] = Hashed_session_key
 
